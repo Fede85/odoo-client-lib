@@ -105,14 +105,14 @@ class JsonRPCException(Exception):
     def __str__(self):
          return repr(self.error)
 
-def json_rpc(url, fct_name, params):
+def json_rpc(session, url, fct_name, params):
     data = {
         "jsonrpc": "2.0",
         "method": fct_name,
         "params": params,
         "id": random.randint(0, 1000000000),
     }
-    result_req = requests.post(url, data=json.dumps(data), headers={
+    result_req = session.post(url, data=json.dumps(data), headers={
         "Content-Type":"application/json",
     })
     result = result_req.json()
@@ -135,9 +135,10 @@ class JsonRPCConnector(Connector):
         :param port: The port used by the Odoo instance for JsonRPC (default to 8069).
         """
         self.url = 'http://%s:%d/jsonrpc' % (hostname, port)
+        self.session = requests.Session()
 
     def send(self, service_name, method, *args):
-        return json_rpc(self.url, "call", {"service": service_name, "method": method, "args": args})
+        return json_rpc(self.session, self.url, "call", {"service": service_name, "method": method, "args": args})
 
 class JsonRPCSConnector(Connector):
     """
@@ -147,16 +148,19 @@ class JsonRPCSConnector(Connector):
     
     __logger = _getChildLogger(_logger, 'connector.jsonrpc')
 
-    def __init__(self, hostname, port=8069):
+    def __init__(self, hostname, port=8069, cert=None, verify=True):
         """
         Initialize by specifying the hostname and the port.
         :param hostname: The hostname of the computer holding the instance of Odoo.
         :param port: The port used by the Odoo instance for JsonRPC (default to 8069).
         """
         self.url = 'https://%s:%d/jsonrpc' % (hostname, port)
+        self.session = requests.Session()
+        self.session.cert = cert
+        self.session.verify = verify
 
     def send(self, service_name, method, *args):
-        return json_rpc(self.url, "call", {"service": service_name, "method": method, "args": args})
+        return json_rpc(self.session, self.url, "call", {"service": service_name, "method": method, "args": args})
 
 class Service(object):
     """
@@ -347,7 +351,7 @@ class Model(object):
         records = self.read(record_ids, fields or [], context=context or {})
         return records
 
-def get_connector(hostname=None, protocol="xmlrpc", port="auto"):
+def get_connector(hostname=None, protocol="xmlrpc", port="auto", cert=None, verify=True):
     """
     A shortcut method to easily create a connector to a remote server using XMLRPC.
 
@@ -364,12 +368,12 @@ def get_connector(hostname=None, protocol="xmlrpc", port="auto"):
     if protocol == "jsonrpc":
         return JsonRPCConnector(hostname, port)
     elif protocol == "jsonrpcs":
-        return JsonRPCSConnector(hostname, port)
+        return JsonRPCSConnector(hostname, port, cert= cert, verify=verify)
     else:
         raise ValueError("You must choose xmlrpc, xmlrpcs, jsonrpc or jsonrpcs")
 
 def get_connection(hostname=None, protocol="xmlrpc", port='auto', database=None,
-                 login=None, password=None, user_id=None):
+                 login=None, password=None, user_id=None, cert=None, verify=True):
     """
     A shortcut method to easily create a connection to a remote Odoo server.
 
@@ -383,5 +387,5 @@ def get_connection(hostname=None, protocol="xmlrpc", port='auto', database=None,
     :param user_id: The user id is a number identifying the user. This is only useful if you
     already know it, in most cases you don't need to specify it.
     """
-    return Connection(get_connector(hostname, protocol, port), database, login, password, user_id)
+    return Connection(get_connector(hostname, protocol, port, cert, verify), database, login, password, user_id)
         
